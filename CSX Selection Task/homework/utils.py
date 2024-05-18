@@ -1,57 +1,42 @@
+import dense_transforms
 import torch
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.transforms import functional as F
 
-import dense_transforms
-
-LABEL_NAMES = ['background', 'kart', 'pickup', 'nitro', 'bomb', 'projectile']
-DENSE_LABEL_NAMES = ['background', 'kart', 'track', 'bomb/projectile', 'pickup/nitro']
+LABEL_NAMES = ["background", "kart", "pickup", "nitro", "bomb", "projectile"]
+DENSE_LABEL_NAMES = ["background", "kart", "track", "bomb/projectile", "pickup/nitro"]
 # Distribution of classes on dense training set (background and track dominate (96%)
 DENSE_CLASS_DISTRIBUTION = [0.52683655, 0.02929112, 0.4352989, 0.0044619, 0.00411153]
 
 
-class SuperTuxDataset(Dataset):    
-
-    def __init__(self, dataset_path,transform=dense_transforms.ToTensor()):
-
+class SuperTuxDataset(Dataset):
+    def __init__(self, dataset_path, transform=dense_transforms.ToTensor()):
         import csv
         from os import path
+
         self.data = []
         self.transform = transform
-        with open(path.join(dataset_path, 'labels.csv'), newline='') as f:
+        with open(path.join(dataset_path, "labels.csv"), newline="") as f:
             reader = csv.reader(f)
             for fname, label, _ in reader:
                 if label in LABEL_NAMES:
                     try:
                         image = Image.open(path.join(dataset_path, fname))
                         label_id = LABEL_NAMES.index(label)
-                        image.load()    
+                        image.load()
                         self.data.append((image, label_id))
                     except:
                         pass
 
-        """
-        Hint: If you're loading (and storing) PIL images here, make sure to call image.load(),
-              to avoid an OS error for too many open files.
-        Hint: Do not store torch.Tensor's as data here, but use PIL images, torchvision.transforms expects PIL images
-              for most transformations.
-        """
-
     def __len__(self):
-        """
-        Your code here
-        """
         return len(self.data)
 
     def __getitem__(self, idx):
-        """
-        Your code here
-        """
         image, label = self.data[idx]
         if self.transform:
-            image, label= self.transform(image,label) 
+            image, label = self.transform(image, label)
         return image, label
 
 
@@ -59,11 +44,11 @@ class DenseSuperTuxDataset(Dataset):
     def __init__(self, dataset_path, transform=dense_transforms.ToTensor()):
         import glob
         from os import path
+
         self.files = []
-        #print(glob.glob('*'))
-        for im_f in glob.glob(path.join(dataset_path, '*_im.jpg'), recursive=True):
+        for im_f in glob.glob(path.join(dataset_path, "*_im.jpg"), recursive=True):
             try:
-                self.files.append(im_f.replace('_im.jpg', ''))
+                self.files.append(im_f.replace("_im.jpg", ""))
             except:
                 pass
         self.transform = transform
@@ -73,22 +58,33 @@ class DenseSuperTuxDataset(Dataset):
 
     def __getitem__(self, idx):
         b = self.files[idx]
-        im = Image.open(b + '_im.jpg')
-        lbl = Image.open(b + '_seg.png')
+        im = Image.open(b + "_im.jpg")
+        lbl = Image.open(b + "_seg.png")
         if self.transform is not None:
             im, lbl = self.transform(im, lbl)
-            # lbl = self.transform(lbl)
         return im, lbl
 
 
 def load_data(dataset_path, num_workers=8, batch_size=64, **kwargs):
     dataset = SuperTuxDataset(dataset_path, **kwargs)
-    return DataLoader(dataset, num_workers=num_workers, batch_size=batch_size, shuffle=True, drop_last=True)
+    return DataLoader(
+        dataset,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+    )
 
 
 def load_dense_data(dataset_path, num_workers=8, batch_size=10, **kwargs):
     dataset = DenseSuperTuxDataset(dataset_path, **kwargs)
-    return DataLoader(dataset, num_workers=num_workers, batch_size=batch_size, shuffle=True, drop_last=True)
+    return DataLoader(
+        dataset,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+    )
 
 
 def _one_hot(x, n):
@@ -98,8 +94,12 @@ def _one_hot(x, n):
 class ConfusionMatrix(object):
     def _make(self, preds, labels):
         label_range = torch.arange(self.size, device=preds.device)[None, :]
-        preds_one_hot, labels_one_hot = _one_hot(preds, self.size), _one_hot(labels, self.size)
-        return (labels_one_hot[:, :, None] * preds_one_hot[:, None, :]).sum(dim=0).detach()
+        preds_one_hot, labels_one_hot = _one_hot(preds, self.size), _one_hot(
+            labels, self.size
+        )
+        return (
+            (labels_one_hot[:, :, None] * preds_one_hot[:, None, :]).sum(dim=0).detach()
+        )
 
     def __init__(self, size=5):
         """
@@ -110,9 +110,6 @@ class ConfusionMatrix(object):
         self.size = size
 
     def add(self, preds, labels):
-        """
-        Updates the confusion matrix using predictions `preds` (e.g. logit.argmax(1)) and ground truth `labels`
-        """
         self.matrix = self.matrix.to(preds.device)
         self.matrix += self._make(preds, labels).float()
 
@@ -144,19 +141,23 @@ class ConfusionMatrix(object):
         return self.matrix / (self.matrix.sum(1, keepdims=True) + 1e-5)
 
 
-if __name__ == '__main__':
-    dataset = DenseSuperTuxDataset('dense_data/train', transform=dense_transforms.Compose(
-        [dense_transforms.RandomHorizontalFlip(), dense_transforms.ToTensor()]))
-    from pylab import show, imshow, subplot, axis
+if __name__ == "__main__":
+    dataset = DenseSuperTuxDataset(
+        "dense_data/train",
+        transform=dense_transforms.Compose(
+            [dense_transforms.RandomHorizontalFlip(), dense_transforms.ToTensor()]
+        ),
+    )
+    from pylab import axis, imshow, show, subplot
 
     for i in range(15):
         im, lbl = dataset[i]
         subplot(5, 6, 2 * i + 1)
         imshow(F.to_pil_image(im))
-        axis('off')
+        axis("off")
         subplot(5, 6, 2 * i + 2)
         imshow(dense_transforms.label_to_pil_image(lbl))
-        axis('off')
+        axis("off")
     show()
     import numpy as np
 
